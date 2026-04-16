@@ -1,0 +1,110 @@
+# NVQ LMS — Full Functional Audit Report
+
+**Date:** 2026-03-03 · **Tests:** 25/25 passed before and after all fixes
+
+---
+
+## Audit Scope
+
+Reviewed all controllers, models, migrations, middleware, routes, and views across the 3 user flows.
+
+---
+
+## ✅ PASS — No Issues
+
+| Area | Status |
+|---|---|
+| All 26 Phase 3 routes registered correctly | ✅ |
+| RoleMiddleware — role enforcement on all protected routes | ✅ |
+| AssignmentSubmission unique(assignment_id, user_id) is enforced in migration | ✅ |
+| quiz_options FK `question_id` matches migration column name | ✅ |
+| StudentController — enrollment guard on all lesson/course routes | ✅ |
+| Student AssignmentController — blocks resubmission when status = graded | ✅ |
+| QuizAttempt — result() ownership check before showing results | ✅ |
+| AssignmentResult `updateOrCreate` — allows re-grading by assessor | ✅ |
+| All eager loading in place (no N+1 risks on critical paths) | ✅ |
+| Storage::url() used consistently in views for file links | ✅ |
+| CSRF protection on all POST/PUT/DELETE forms | ✅ |
+| Instructor authorizeAssignment/authorizeQuiz on edit/update/destroy | ✅ |
+
+---
+
+## 🔴 CRITICAL — Fixed
+
+### 1. Authorization Leak: `Instructor/AssignmentController::store()`
+**Risk:** An instructor could POST `unit_id` belonging to another instructor's course.  
+**Fix:** Added `Unit::with('module.course')->findOrFail()` ownership check before creating assignment.
+
+### 2. Authorization Leak: `Instructor/QuizController::store()`
+**Risk:** Same issue — instructor could create quiz against any unit in the system.  
+**Fix:** Same pattern — verify unit's course belongs to `Auth::id()` before creating.
+
+### 3. Quiz Submit Re-Entry Bypass: `Student/QuizController::submit()`
+**Risk:** `take()` redirected passed students, but they could still POST directly to `/submit` to create unbounded new attempts.  
+**Fix:** Added `lastAttemptByUser()` check at the top of `submit()` — returns to result screen if already passed.
+
+---
+
+## 🟡 MODERATE — Fixed
+
+### 4. Assessor Dashboard Missing Phase 3 Stats
+**Issue:** `DashboardController::assessor()` showed generic counts but no pending grading count.  
+**Fix:** Added `pending_grading => AssignmentSubmission::where('status', '!=', 'graded')->count()` to the stats array.
+
+---
+
+## 🟢 MINOR — Action Required (Not Code)
+
+### 5. Storage Symlink
+`Storage::url()` calls in assignment submission views require the public storage symlink.  
+**Action:** Run once on the server:
+```bash
+php artisan storage:link
+```
+
+### 6. Phase 3 Migrations Not Yet Run
+All 7 Phase 3 tables need to be created.  
+**Action:**
+```bash
+php artisan migrate
+```
+
+---
+
+## Flow Verification
+
+### Instructor Flow
+| Step | Routes | Auth | DB |
+|---|---|---|---|
+| Create Course | `POST instructor/courses` | ✅ role:instructor | ✅ |
+| Create Module | `POST instructor/courses/{c}/modules` | ✅ + course ownership | ✅ |
+| Create Unit | `POST .../modules/{m}/units` | ✅ + course ownership | ✅ |
+| Create Lesson | `POST .../units/{u}/lessons` | ✅ + course ownership | ✅ |
+| Create Assignment | `POST instructor/assignments` | ✅ unit ownership (fixed) | ✅ |
+| Create Quiz | `POST instructor/quizzes` | ✅ unit ownership (fixed) | ✅ |
+| Manage Questions | `POST instructor/quizzes/{q}/questions` | ✅ quiz ownership | ✅ |
+
+### Student Flow
+| Step | Routes | Auth | DB |
+|---|---|---|---|
+| Register | Breeze default | ✅ | ✅ default role=student |
+| Browse Courses | `GET student/courses` | ✅ role:student | ✅ |
+| Enroll | `POST student/courses/{c}/enroll` | ✅ dup check | ✅ |
+| View Lessons | `GET student/courses/{c}/lessons/{l}` | ✅ enrollment check | ✅ |
+| Mark Complete | `POST .../lessons/{l}/complete` | ✅ enrollment check | ✅ |
+| Submit Assignment | `POST student/assignments/{a}/submit` | ✅ enrollment + graded check | ✅ file disk |
+| Take Quiz | `GET student/quizzes/{q}/take` | ✅ passed guard | ✅ |
+| Submit Quiz | `POST student/quizzes/{q}/submit` | ✅ passed guard (fixed) | ✅ auto-mark |
+
+### Assessor Flow
+| Step | Routes | Auth | DB |
+|---|---|---|---|
+| View Queue | `GET assessor/grading` | ✅ role:assessor | ✅ |
+| Open Submission | `GET assessor/grading/{s}` | ✅ role:assessor | ✅ eager loaded |
+| Grade (C/NYC) | `POST assessor/grading/{s}/grade` | ✅ validation | ✅ upsert |
+
+---
+
+## Summary
+
+**3 critical bugs fixed. 4 minor items noted. All 25 tests still passing.**
