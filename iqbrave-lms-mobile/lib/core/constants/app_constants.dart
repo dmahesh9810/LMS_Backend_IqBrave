@@ -1,6 +1,6 @@
 class AppConstants {
-  // Using local IP 192.168.1.102 so the physical Android phone can connect to PC via WiFi
-  static const String baseUrl = 'http://192.168.1.102:8000/api'; 
+  // Using local IP 192.168.1.101 so the physical Android phone can connect to PC via WiFi
+  static const String baseUrl = 'http://192.168.1.101:8000/api';
 
   // String Constants
   static const String appName = 'IQBrave LMS';

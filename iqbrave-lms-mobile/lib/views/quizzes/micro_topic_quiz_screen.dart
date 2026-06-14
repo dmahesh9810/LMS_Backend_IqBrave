@@ -7,6 +7,8 @@ import '../../providers/course_provider.dart';
 import 'practical_upload_screen.dart';
 import 'widgets/video_player_widget.dart';
 import 'widgets/iqbot_sheet.dart';
+import 'widgets/badge_unlock_popup.dart';
+import 'widgets/concept_card_deck.dart'; // Phase 9
 
 class MicroTopicQuizScreen extends ConsumerStatefulWidget {
   final int microTopicId;
@@ -31,8 +33,13 @@ class _MicroTopicQuizScreenState extends ConsumerState<MicroTopicQuizScreen> {
 
   List<Map<String, dynamic>> _questions = [];
   String _contentHtml = '';
-  String? _videoUrl;        // ← NEW: YouTube URL from API
+  String? _videoUrl;        // YouTube URL from API
   bool _isLoading = true;
+
+  // ── Phase 9: Rich Lesson Flow (Concept Cards) ──
+  List<dynamic> _conceptCards = [];
+  String? _keyTakeaway;
+  bool _showQuiz = false;
 
   @override
   void initState() {
@@ -85,8 +92,13 @@ class _MicroTopicQuizScreenState extends ConsumerState<MicroTopicQuizScreen> {
         setState(() {
           _contentHtml = data['content_html'] ?? '';
           _videoUrl    = data['video_url'];   // ← Store video URL
-          _questions = List<Map<String, dynamic>>.from(data['questions']);
-          _isLoading = false;
+          _questions   = List<Map<String, dynamic>>.from(data['questions']);
+          // Phase 9
+          _conceptCards = data['concept_cards'] ?? [];
+          _keyTakeaway  = data['key_takeaway'];
+          // Show quiz directly if no cards
+          _showQuiz     = _conceptCards.isEmpty;
+          _isLoading   = false;
         });
       }
     } catch (e) {
@@ -105,23 +117,63 @@ class _MicroTopicQuizScreenState extends ConsumerState<MicroTopicQuizScreen> {
       _isCorrect = correct;
     });
 
-    // Target the specific Backend gamification status endpoint
     try {
       final dio = ref.read(apiClientProvider).dio;
-      // Send attempt payload (is_correct boolean flag tells engine to increase XP or drop heart)
-      await dio.post('/v1/micro-topics/${widget.microTopicId}/attempt', data: {
-        'is_correct': correct,
-        'concept_id': 1 
-      });
+      final response = await dio.post(
+        '/v1/micro-topics/${widget.microTopicId}/attempt',
+        data: {'is_correct': correct, 'concept_id': 1},
+      );
 
-      // Synchronize frontend UI provider immediately
+      // Sync gamification UI
       if (correct) {
         ref.read(gamificationProvider.notifier).addXp(10);
       } else {
         ref.read(gamificationProvider.notifier).reduceHeart();
       }
+
+      // 🏆 Phase 7A: Show badge popup if new badges earned
+      final data       = response.data['data'] as Map<String, dynamic>?;
+      final newBadges  = (data?['new_badges'] as List<dynamic>? ?? [])
+          .cast<Map<String, dynamic>>();
+      final isMastered = data?['is_mastered'] == true;
+
+      if (mounted && newBadges.isNotEmpty) {
+        await showBadgeUnlock(context, newBadges);
+      }
+
+      // 🟢 Phase 6: Mastery achieved toast
+      if (mounted && correct && isMastered) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('🏆 You\'ve mastered this topic!',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            backgroundColor: Colors.green.shade700,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+
+      // 🎯 Phase 7D: Daily goal achieved celebration
+      final dailyGoalAchieved = data?['daily_goal_achieved'] == true;
+      if (mounted && dailyGoalAchieved) {
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('🎯 Daily Goal Complete! Amazing work today! 🎉',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              backgroundColor: const Color(0xFF7C3AED),
+              duration: const Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+          );
+        }
+      }
     } catch (e) {
-      // Ignore API errors gracefully during visual UI interactions
+      // Ignore API errors gracefully
     }
 
     setState(() => _isChecking = false);
@@ -186,6 +238,26 @@ class _MicroTopicQuizScreenState extends ConsumerState<MicroTopicQuizScreen> {
       return Scaffold(
         appBar: AppBar(title: Text(widget.title), elevation: 0),
         body: const Center(child: CircularProgressIndicator(color: Colors.blue)),
+      );
+    }
+
+    // Note: The questions empty check is moved below the concept cards check.
+
+    // ── Phase 9: Show Concept Cards instead of Quiz ──
+    if (!_showQuiz && _conceptCards.isNotEmpty) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0F172A),
+        body: SafeArea(
+          child: ConceptCardDeckWidget(
+            cards: _conceptCards,
+            keyTakeaway: _keyTakeaway,
+            onStartQuiz: () {
+              setState(() {
+                _showQuiz = true;
+              });
+            },
+          ),
+        ),
       );
     }
 

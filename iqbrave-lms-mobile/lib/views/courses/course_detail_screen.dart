@@ -19,24 +19,24 @@ class CourseDetailScreen extends ConsumerStatefulWidget {
 class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
   @override
   Widget build(BuildContext context) {
-    final gamificationState = ref.watch(gamificationProvider);
-    final learningPathAsync = ref.watch(learningPathProvider);
+    final gamificationState  = ref.watch(gamificationProvider);
+    final learningPathAsync  = ref.watch(learningPathProvider);
+    final nodeMasteryAsync   = ref.watch(nodeMasteryProvider);   // Phase 6
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       appBar: gamificationState.when(
-        data: (stats) => GamificationAppBarWidget(
-          streakDays: stats.currentStreak,
-          xp: stats.xp,
-          hearts: stats.hearts,
-        ),
-        loading: () => const GamificationAppBarWidget(),
-        error: (_, __) => const GamificationAppBarWidget(),
+        data:    (s) => GamificationAppBarWidget(streakDays: s.currentStreak, xp: s.xp, hearts: s.hearts),
+        loading: ()  => const GamificationAppBarWidget(),
+        error:   (_, __) => const GamificationAppBarWidget(),
       ),
       body: learningPathAsync.when(
         data: (pathData) {
-          final title = pathData['course_title'] ?? 'Gamified NVQ Course';
-          final nodes = pathData['nodes'] as List<dynamic>;
+          final title  = pathData['course_title'] ?? 'Gamified NVQ Course';
+          final nodes  = pathData['nodes'] as List<dynamic>;
+
+          // Phase 6: resolve mastery map (empty map if still loading)
+          final masteryMap = nodeMasteryAsync.asData?.value ?? {};
 
           return CustomScrollView(
             slivers: [
@@ -54,19 +54,16 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
                   ),
                 ),
               ),
-              // Gamified Duolingo Winding Roadmap
               SliverFillRemaining(
                 child: LearningPathMap(
-                  nodes: nodes,
-                  onNodeTap: (node) async {
-                    // 🔒 Don't allow locked nodes
+                  nodes:      nodes,
+                  masteryMap: masteryMap,
+                  onNodeTap:  (node) async {
                     if (node['status'] == 'locked') return;
 
                     final topicId = node['id'] as int;
                     final title   = node['title'] as String? ?? 'Topic';
 
-                    // Navigate (both types go through MicroTopicQuizScreen
-                    // which auto-detects is_practical and redirects if needed)
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -77,9 +74,9 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
                       ),
                     );
 
-                    // 🔄 Refresh the learning path after returning
-                    // so completed nodes turn green immediately
+                    // 🔄 Refresh path + mastery after quiz
                     ref.invalidate(learningPathProvider);
+                    ref.invalidate(nodeMasteryProvider);   // Phase 6
                   },
                 ),
               ),
@@ -87,7 +84,7 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => Center(child: Text('Failed to load map: $e')),
+        error:   (e, _) => Center(child: Text('Failed to load map: $e')),
       ),
     );
   }

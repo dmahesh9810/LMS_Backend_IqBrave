@@ -7,6 +7,7 @@ import 'widgets/gamification_stats_widget.dart';
 import 'widgets/module_completion_ring_widget.dart';
 import 'widgets/daily_revision_card.dart';
 import 'widgets/radar_chart_widget.dart';
+import 'leaderboard_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -64,6 +65,12 @@ class DashboardScreen extends ConsumerWidget {
                     ],
                   ),
                   const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.workspace_premium_rounded, color: Colors.amber, size: 24),
+                    onPressed: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const LeaderboardScreen()));
+                    },
+                  ),
                   IconButton(
                     icon: const Icon(Icons.logout_rounded, color: Colors.white38, size: 20),
                     onPressed: () => ref.read(authProvider.notifier).logout(),

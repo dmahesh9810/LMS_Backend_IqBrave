@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/knowledge_provider.dart';
 
-/// Full Gamification Stats Section:
-/// XP progress bar → Level, Streak 🔥, Hearts ❤️, Module % ring
+/// Full Gamification Stats Section — Phase 7B updated:
+/// Level title/emoji, real XP progress bar, streak, hearts
 class GamificationStatsWidget extends ConsumerWidget {
   const GamificationStatsWidget({super.key});
 
@@ -13,12 +13,12 @@ class GamificationStatsWidget extends ConsumerWidget {
 
     return gamAsync.when(
       loading: () => _buildSkeleton(),
-      error: (_, __) => const SizedBox.shrink(),
-      data: (stats) => _buildStats(stats),
+      error:   (_, __) => const SizedBox.shrink(),
+      data:    (stats) => _buildStats(context, stats),
     );
   }
 
-  // ── Shimmer-style skeleton while loading ────────────────────────────────
+  // ── Skeleton ────────────────────────────────────────────────────────────
   Widget _buildSkeleton() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -34,13 +34,24 @@ class GamificationStatsWidget extends ConsumerWidget {
   }
 
   // ── Live stats ──────────────────────────────────────────────────────────
-  Widget _buildStats(dynamic stats) {
-    final int xp          = stats.xp ?? 0;
-    final int hearts      = stats.hearts ?? 3;
-    final int streak      = stats.currentStreak ?? 0;
-    final int level       = (xp / 100).floor() + 1;
-    final int xpProgress  = xp % 100; // XP within current level
-    final double progress = xpProgress / 100.0;
+  Widget _buildStats(BuildContext context, dynamic stats) {
+    final int xp            = stats.xp ?? 0;
+    final int hearts        = stats.hearts ?? 5;
+    final int streak        = stats.currentStreak ?? 0;
+    // Phase 7B: real level data from API
+    final int level         = stats.level ?? 1;
+    final String levelTitle = stats.levelTitle ?? 'Beginner';
+    final String levelEmoji = stats.levelEmoji ?? '🌱';
+    final int xpToNext      = stats.xpToNext ?? 100;
+    final int levelProgPct  = stats.levelProgress ?? 0;
+    final double progress   = (levelProgPct / 100.0).clamp(0.0, 1.0);
+    // Phase 7C: Shield
+    final bool shieldActive = stats.streakShieldActive ?? false;
+    // Phase 7D: Daily goal
+    final int dailyGoal     = stats.dailyGoal ?? 3;
+    final int dailyDone     = stats.dailyNodesToday ?? 0;
+    final double dailyPct   = dailyGoal > 0 ? (dailyDone / dailyGoal).clamp(0.0, 1.0) : 0.0;
+    final bool goalDone     = dailyDone >= dailyGoal;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -55,18 +66,17 @@ class GamificationStatsWidget extends ConsumerWidget {
         boxShadow: [
           BoxShadow(
             color: Colors.blueAccent.withValues(alpha: 0.12),
-            blurRadius: 20,
-            spreadRadius: 2,
+            blurRadius: 20, spreadRadius: 2,
           )
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Row 1: Level badge + Streak + Hearts ──────────────────────
+          // ── Row 1: Level badge + Streak + Hearts ────────────────────────
           Row(
             children: [
-              // Level badge
+              // Level badge with real title (Phase 7B)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
@@ -75,11 +85,12 @@ class GamificationStatsWidget extends ConsumerWidget {
                   border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.5)),
                 ),
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.military_tech, color: Colors.amber, size: 16),
-                    const SizedBox(width: 4),
+                    Text(levelEmoji, style: const TextStyle(fontSize: 14)),
+                    const SizedBox(width: 5),
                     Text(
-                      'Level $level',
+                      'Lv.$level $levelTitle',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -90,29 +101,21 @@ class GamificationStatsWidget extends ConsumerWidget {
                 ),
               ),
               const Spacer(),
-
-              // Streak
+              // Phase 7C: Shield badge next to streak
               _StatChip(
-                icon: '🔥',
+                icon: shieldActive ? '🛡️🔥' : '🔥',
                 value: '$streak',
-                label: 'Streak',
-                color: Colors.orange,
+                label: shieldActive ? 'Shield' : 'Streak',
+                color: shieldActive ? Colors.tealAccent : Colors.orange,
               ),
               const SizedBox(width: 12),
-
-              // Hearts
-              _StatChip(
-                icon: '❤️',
-                value: '$hearts',
-                label: 'Hearts',
-                color: Colors.redAccent,
-              ),
+              _StatChip(icon: '❤️', value: '$hearts', label: 'Hearts', color: Colors.redAccent),
             ],
           ),
 
           const SizedBox(height: 18),
 
-          // ── Row 2: XP bar ──────────────────────────────────────────────
+          // ── Row 2: XP label + to-next ───────────────────────────────────
           Row(
             children: [
               const Icon(Icons.bolt, color: Colors.amber, size: 16),
@@ -120,53 +123,96 @@ class GamificationStatsWidget extends ConsumerWidget {
               Text(
                 '$xp XP',
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+                  color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14,
                 ),
               ),
               const Spacer(),
               Text(
-                '$xpProgress / 100 to Level ${level + 1}',
+                xpToNext > 0 ? '$xpToNext XP to next level' : '👑 Max Level!',
                 style: const TextStyle(color: Colors.white38, fontSize: 11),
               ),
             ],
           ),
           const SizedBox(height: 8),
 
-          // ── XP Progress Bar ────────────────────────────────────────────
-          Stack(
-            children: [
-              Container(
-                height: 10,
-                decoration: BoxDecoration(
-                  color: Colors.white10,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 800),
-                curve: Curves.easeOut,
-                height: 10,
-                width: progress *
-                    (MediaQueryData.fromView(
-                              WidgetsBinding.instance.platformDispatcher.views.first,
-                            ).size.width -
-                            80),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF3B82F6), Color(0xFF06B6D4)],
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blueAccent.withValues(alpha: 0.5),
-                      blurRadius: 6,
+          // ── XP Progress Bar (real % from API) ───────────────────────────
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return Stack(
+                children: [
+                  Container(
+                    height: 10,
+                    width: constraints.maxWidth,
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                  ],
+                  ),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 800),
+                    curve: Curves.easeOut,
+                    height: 10,
+                    width: constraints.maxWidth * progress,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF3B82F6), Color(0xFF06B6D4)],
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.blueAccent.withValues(alpha: 0.5),
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+
+          const SizedBox(height: 14),
+
+          // ── Phase 7D: Daily Goal Progress ─────────────────────────────
+          Row(
+            children: [
+              Text(
+                goalDone ? '🎯 Daily Goal Done!' : '🎯 Daily: $dailyDone / $dailyGoal nodes',
+                style: TextStyle(
+                  color: goalDone ? Colors.greenAccent : Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          LayoutBuilder(
+            builder: (ctx, c) => Stack(
+              children: [
+                Container(
+                  height: 7,
+                  width: c.maxWidth,
+                  decoration: BoxDecoration(
+                    color: Colors.white10,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 600),
+                  height: 7,
+                  width: c.maxWidth * dailyPct,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: goalDone
+                          ? [Colors.greenAccent, Colors.tealAccent]
+                          : [Colors.amber, Colors.orange],
+                    ),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -204,15 +250,10 @@ class _StatChip extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              color: color,
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
+              color: color, fontSize: 15, fontWeight: FontWeight.bold,
             ),
           ),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white38, fontSize: 10),
-          ),
+          Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)),
         ],
       ),
     );

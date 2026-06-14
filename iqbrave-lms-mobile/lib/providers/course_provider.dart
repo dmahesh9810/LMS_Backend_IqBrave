@@ -37,3 +37,20 @@ final spacedRepetitionProvider = FutureProvider<List<dynamic>>((ref) async {
     return [];
   }
 });
+
+/// Phase 6: Mastery score per node (🔴🟡🟢)
+final nodeMasteryProvider = FutureProvider<Map<int, Map<String, dynamic>>>((ref) async {
+  final dio = ref.read(apiClientProvider).dio;
+  try {
+    final response = await dio.get('/v1/student/node-mastery');
+    final list = response.data['data'] as List<dynamic>? ?? [];
+    // Map: micro_topic_id → mastery data
+    return {
+      for (final item in list)
+        (item['micro_topic_id'] as int): item as Map<String, dynamic>
+    };
+  } catch (_) {
+    return {};
+  }
+});
+
